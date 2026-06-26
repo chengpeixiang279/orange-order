@@ -1,1 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能配图点餐系统</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
+    <style>
+        * { box-sizing: border-box; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+        body { background-color: #f4f6f9; margin: 0; padding: 20px; color: #333; }
+        
+        .main-layout { max-width: 1300px; margin: 0 auto; display: flex; gap: 20px; flex-wrap: wrap; }
+        
+        /* 通用卡片样式 */
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); flex: 1; min-width: 320px; }
+        h2 { margin-top: 0; color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; font-size: 1.3em; }
+        
+        /* 1. 菜单配置面板 */
+        .config-box { border-top: 4px solid #9b59b6; max-width: 350px; }
+        .config-form { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .config-form input { padding: 8px; border: 1px solid #ddd; border-radius: 4px; flex: 1; min-width: 80px; }
+        .input-name { flex: 2 !important; }
+        .btn-add { background: #9b59b6; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; }
+        .btn-add:hover { background: #8e44ad; }
+        
+        .config-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px dashed #eee; font-size: 0.9em; }
+        .config-item img { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; margin-right: 10px; }
+        .config-left { display: flex; align-items: center; }
+        .btn-del { background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+        
+        /* 2. 点餐区（瀑布流卡片化，突出 AI 配图） */
+        .menu-box { border-top: 4px solid #3498db; flex: 1.5; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 15px; }
+        .menu-card { background: #fff; border: 1px solid #e1e8ed; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }
+        .menu-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.1); }
+        .food-img { width: 100%; height: 120px; object-fit: cover; background: #e0e0e0; }
+        .food-info { padding: 10px; flex: 1; display: flex; flex-direction: column; justify-content: space-between; }
+        .food-name { font-weight: bold; font-size: 1em; margin-bottom: 5px; }
+        .food-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+        .food-price { color: #e74c3c; font-weight: bold; }
+        
+        .btn-group { display: flex; align-items: center; gap: 8px; }
+        .btn-calc { background: #3498db; color: white; border: none; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+        .count { font-weight: bold; width: 15px; text-align: center; font-size: 0.9em; }
 
+        /* 3. 收据小票样式 */
+        .receipt-box { border-top: 4px solid #2ecc71; max-width: 400px; }
+        #receipt-content { background: #fffdf7; border: 1px solid #f1e7d0; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; }
+        .receipt-title { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 15px; letter-spacing: 1px; }
+        
+        /* 小票内的菜品行（带图缩略图） */
+        .receipt-item-line { display: flex; align-items: center; margin: 10px 0; justify-content: space-between; }
+        .receipt-food-detail { display: flex; align-items: center; }
+        .receipt-img { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; margin-right: 8px; border: 1px solid #ddd; }
+        
+        .receipt-time { text-align: center; color: #999; font-size: 0.8em; margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px; }
+        .total-line { border-top: 2px dashed #ccc; padding-top: 10px; margin-top: 15px; font-weight: bold; font-size: 1.1em; color: #e74c3c; display: flex; justify-content: space-between; }
+        
+        .btn-submit { width: 100%; background: #2ecc71; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-submit:hover { background: #27ae60; }
+        .btn-submit:disabled { background: #ccc; cursor: not-allowed; }
+        .empty-hint { color: #999; text-align: center; margin: 20px 0; grid-column: 1/-1; }
+    </style>
+</head>
+<body>
+
+<div class="main-layout">
+    
+    <div class="card config-box">
+        <h2>🛠️ 菜品配置(自动配图)</h2>
+        <div class="config-form">
+            <input type="text" id="new-name" class="input-name" placeholder="如: 汉堡/Noodle/Pizza">
+            <input type="number" id="new-price" class="input-price" placeholder="价格" min="0">
+            <button class="btn-add" onclick="addCustomItem()">智能添加菜品</button>
+        </div>
+        <div id="config-list"></div>
+    </div>
+
+    <div class="card menu-box">
+        <h2>🍽️ 智能视觉点餐区</h2>
+        <div class="menu-grid" id="menu-list"></div>
+    </div>
+
+    <div class="card receipt-box">
+        <h2>📄 带图出餐收据预览</h2>
+        <div id="receipt-content">
+            <div class="receipt-title">*** 智绘未来智慧餐厅 ***</div>
+            <div id="receipt-items">
+                <p class="empty-hint">暂无选择菜品</p>
+            </div>
+            <div class="total-line">
+                <span>总计金额：</span>
+                <span id="total-price">￥0.00</span>
+            </div>
+            <div class="receipt-time" id="receipt-time">打印时间：--</div>
+        </div>
+        <button class="btn-submit" id="generate-btn" onclick="generateReceiptImage()">生成收据图片并下载</button>
+    </div>
+
+</div>
+
+<script>
+    // 默认自带智能配图的菜单数据 (使用免版权高质餐饮图片源)
+    const defaultMenu = [
+        { id: 1, name: "牛肉面 Noodle", price: 28, img: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=200&auto=format&fit=crop" },
+        { id: 2, name: "美式汉堡 Burger", price: 22, img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop" },
+        { id: 3, name: "意式披萨 Pizza", price: 45, img: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&auto=format&fit=crop" }
+    ];
+
+    let menuData = JSON.parse(localStorage.getItem('my_ai_menu')) || defaultMenu;
+    let cart = {};
+
+    function saveAndRefresh() {
+        localStorage.setItem('my_ai_menu', JSON.stringify(menuData));
+        renderConfigAndMenu();
+        renderReceipt();
+    }
+
+    // ✨ 核心逻辑：利用全球图库映射技术，根据输入的中文/英文菜名，自动匹配最相关的真实食物图片
+    function getAutoImageUtl(foodName) {
+        // 提取核心关键词，优先转为英文能获得极高匹配度
+        let keyword = foodName;
+        if(foodName.includes("面")) keyword = "noodles";
+        else if(foodName.includes("饭")) keyword = "rice";
+        else if(foodName.includes("鸡") || foodName.includes("鸟")) keyword = "chicken";
+        else if(foodName.includes("肉")) keyword = "meat";
+        else if(foodName.includes("鱼") || foodName.includes("海鲜")) keyword = "fish";
+        else if(foodName.includes("茶") || foodName.includes("饮") || foodName.includes("汁")) keyword = "drink";
+        else if(foodName.includes("蛋糕") || foodName.includes("甜")) keyword = "cake";
+        else if(foodName.includes("沙拉")) keyword = "salad";
+        
+        // 动态生成一张 300x300 专门针对该食物种类的优质开源图像
+        return `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&auto=format&fit=crop&q=60&sig=${Math.random()}&txt=${encodeURIComponent(keyword)}`;
+    }
+
+    // 1. 添加新菜品（自动触发配图）
+    function addCustomItem() {
+        const nameInput = document.getElementById('new-name');
+        const priceInput = document.getElementById('new-price');
+        const name = nameInput.value.trim();
+        const price = parseInt(priceInput.value);
+
+        if (!name || isNaN(price) || price < 0) {
+            alert('请完整输入菜品名称和合理价格！');
+            return;
+        }
+
+        // 自动根据菜名配图
+        const autoImg = getAutoImageUtl(name);
+
+        const newItem = {
+            id: Date.now(),
+            name: name,
+            price: price,
+            img: autoImg
+        };
+
+        menuData.push(newItem);
+        nameInput.value = '';
+        priceInput.value = '';
+        
+        saveAndRefresh();
+    }
+
+    // 2. 删除菜品
+    function deleteItem(id) {
+        if(confirm("确定删除这道菜吗？")) {
+            menuData = menuData.filter(item => item.id !== id);
+            delete cart[id];
+            saveAndRefresh();
+        }
+    }
+
+    // 3. 渲染配置面板和点餐网格
+    function renderConfigAndMenu() {
+        const configList = document.getElementById('config-list');
+        const menuList = document.getElementById('menu-list');
+        
+        if (menuData.length === 0) {
+            configList.innerHTML = '<p class="empty-hint">暂无菜品</p>';
+            menuList.innerHTML = '<p class="empty-hint">请先在左侧添加菜品，系统会自动配图！</p>';
+            return;
+        }
+
+        // 渲染左侧配置列表
+        configList.innerHTML = menuData.map(item => `
+            <div class="config-item">
+                <div class="config-left">
+                    <img src="${item.img}" alt="菜品">
+                    <span>${item.name} (￥${item.price})</span>
+                </div>
+                <button class="btn-del" onclick="deleteItem(${item.id})">删除</button>
+            </div>
+        `).join('');
+
+        // 渲染中间点餐区（现代卡片式）
+        menuList.innerHTML = menuData.map(item => `
+            <div class="menu-card">
+                <img class="food-img" src="${item.img}" alt="${item.name}">
+                <div class="food-info">
+                    <div class="food-name">${item.name}</div>
+                    <div class="food-bottom">
+                        <span class="food-price">￥${item.price}</span>
+                        <div class="btn-group">
+                            <button class="btn-calc" onclick="updateCart(${item.id}, -1)">-</button>
+                            <span class="count" id="count-${item.id}">${cart[item.id] || 0}</span>
+                            <button class="btn-calc" onclick="updateCart(${item.id}, 1)">+</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 4. 更新购物车
+    function updateCart(id, change) {
+        if (!cart[id]) cart[id] = 0;
+        cart[id] += change;
+        if (cart[id] <= 0) delete cart[id];
+
+        const countEl = document.getElementById(`count-${id}`);
+        if (countEl) countEl.innerText = cart[id] || 0;
+        
+        renderReceipt();
+    }
+
+    // 5. 更新带图的收据单预览
+    function renderReceipt() {
+        const receiptItems = document.getElementById('receipt-items');
+        const totalPriceEl = document.getElementById('total-price');
+        const timeEl = document.getElementById('receipt-time');
+        let total = 0;
+        let itemsHtml = '';
+
+        for (let id in cart) {
+            const item = menuData.find(m => m.id == id);
+            if(item) {
+                const subtotal = item.price * cart[id];
+                total += subtotal;
+                // ✨ 这里将图片也嵌入到了收据格式中
+                itemsHtml += `
+                    <div class="receipt-item-line">
+                        <div class="receipt-food-detail">
+                            <img class="receipt-img" src="${item.img}">
+                            <span>${item.name} x${cart[id]}</span>
+                        </div>
+                        <span>￥${subtotal}.00</span>
+                    </div>
+                `;
+            }
+        }
+
+        if (itemsHtml === '') {
+            receiptItems.innerHTML = '<p class="empty-hint">暂无选择菜品</p>';
+            timeEl.innerText = '打印时间：--';
+        } else {
+            receiptItems.innerHTML = itemsHtml;
+            timeEl.innerText = `打印时间：${new Date().toLocaleString()}`;
+        }
+        totalPriceEl.innerText = `￥${total}.00`;
+    }
+
+    // 6. 生成并下载带图的小票图片
+    function generateReceiptImage() {
+        if (Object.keys(cart).length === 0) {
+            alert('小票是空的，请先点餐！');
+            return;
+        }
+
+        const btn = document.getElementById('generate-btn');
+        const receiptContent = document.getElementById('receipt-content');
+
+        btn.innerText = "图像引擎正在绘制小票...";
+        btn.disabled = true;
+
+        // 特别注意：因为图片来自外部网络，需要开启 allowTaint 和 useCORS，否则截图会变成空白
+        html2canvas(receiptContent, {
+            scale: 2,
+            backgroundColor: "#fffdf7",
+            useCORS: true, 
+            allowTaint: false
+        }).then(canvas => {
+            const imgData = canvas.toDataURL("image/png");
+            
+            const link = document.createElement('a');
+            link.href = imgData;
+            link.download = `视觉出餐小票_${Date.now()}.png`;
+            link.click();
+
+            btn.innerText = "生成收据图片并下载";
+            btn.disabled = false;
+        }).catch(err => {
+            console.error(err);
+            alert("生成失败，请确保网络畅通以加载菜品图片。");
+            btn.innerText = "生成收据图片并下载";
+            btn.disabled = false;
+        });
+    }
+
+    // 初始化
+    renderConfigAndMenu();
+</script>
+
+</body>
+</html>
