@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Orange Order - 移动点餐端</title>
+    <title>Orange Order - 移动点餐端 </title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
@@ -69,10 +69,9 @@
 </div>
 
 <script>
-    // 独一无二的通信频道标识（点餐端与接单端必须完全一致）
     const TOPIC_ID = "orange_shop_topic_2026_xyz"; 
 
-    // 初始化连接免费稳定的公共 MQTT 服务器 (EMQX 提供)
+    // 初始化 MQTT 连接
     const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
 
     client.on('connect', () => {
@@ -91,11 +90,13 @@
         { id: 3, name: "意式披萨 Pizza", img: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&auto=format&fit=crop" }
     ];
 
-    let menuData = JSON.parse(localStorage.getItem('my_ai_menu_v3')) || defaultMenu;
+    // ✨ 核心修复点 1：确保使用一个干净且不轻易被其他项目污染的本地缓存 Key
+    let menuData = JSON.parse(localStorage.getItem('orange_memorized_menu_v1')) || defaultMenu;
     let cart = {};
 
+    // ✨ 核心修复点 2：将保存和刷新逻辑整合，确保每次修改立即写入缓存
     function saveAndRefresh() {
-        localStorage.setItem('my_ai_menu_v3', JSON.stringify(menuData));
+        localStorage.setItem('orange_memorized_menu_v1', JSON.stringify(menuData));
         renderConfigAndMenu();
         renderReceipt();
     }
@@ -112,16 +113,17 @@
         const nameInput = document.getElementById('new-name');
         const name = nameInput.value.trim();
         if (!name) return alert('请输入名称');
+        
         menuData.push({ id: Date.now(), name: name, img: getAutoImageUtl(name) });
         nameInput.value = '';
-        saveAndRefresh();
+        saveAndRefresh(); // 这里会触发实时保存
     }
 
     function deleteItem(id) {
         if(confirm("确定删除吗？")) {
             menuData = menuData.filter(item => item.id !== id);
             delete cart[id];
-            saveAndRefresh();
+            saveAndRefresh(); // 这里会触发实时保存
         }
     }
 
@@ -180,7 +182,6 @@
         timeEl.innerText = itemsHtml ? `打印时间：${new Date().toLocaleTimeString()}` : '打印时间：--';
     }
 
-    // ✨ 强力发射端：秒级将订单通过 MQTT 广播出去
     function sendAndDownloadOrder() {
         if (Object.keys(cart).length === 0) return alert('请先点餐！');
 
@@ -200,12 +201,10 @@
         btn.innerText = "正在跨设备无线送单...";
         btn.disabled = true;
 
-        // 通过高内聚的 WebSocket 管道向外发布信息
         try {
             client.publish(TOPIC_ID, JSON.stringify(payload), { qos: 1 }, (err) => {
                 if (err) throw err;
 
-                // 传输完毕后截图生成小票
                 html2canvas(document.getElementById('receipt-content'), { scale: 2, backgroundColor: "#fffdf7", useCORS: true })
                 .then(canvas => {
                     const link = document.createElement('a');
@@ -214,6 +213,7 @@
                     link.click();
 
                     cart = {};
+                    // ✨ 核心修复点 3：这里只刷新界面并保存，防止丢失当前已添加的美食库数据
                     saveAndRefresh();
                     alert('🎉 订单已通过高稳定性通道发送到厨房终端！');
                 })
@@ -229,7 +229,8 @@
         }
     }
 
-    renderConfigAndMenu();
+    // ✨ 核心修复点 4：页面首次打开时，调用全量刷新方法，保证读取和渲染同步运行
+    saveAndRefresh();
 </script>
 </body>
 </html>
