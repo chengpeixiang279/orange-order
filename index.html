@@ -29,7 +29,7 @@
         .config-left { display: flex; align-items: center; }
         .btn-del { background: #e74c3c; color: white; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
         
-        /* 2. 点餐区（瀑布流卡片化，突出 AI 配图） */
+        /* 2. 点餐区 */
         .menu-box { border-top: 4px solid #3498db; flex: 1.5; }
         .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 15px; }
         .menu-card { background: #fff; border: 1px solid #e1e8ed; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; transition: transform 0.2s; }
@@ -49,7 +49,7 @@
         #receipt-content { background: #fffdf7; border: 1px solid #f1e7d0; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-family: monospace; }
         .receipt-title { text-align: center; font-weight: bold; font-size: 1.2em; margin-bottom: 15px; letter-spacing: 1px; }
         
-        /* 小票内的菜品行（带图缩略图） */
+        /* 小票内的菜品行 */
         .receipt-item-line { display: flex; align-items: center; margin: 10px 0; justify-content: space-between; }
         .receipt-food-detail { display: flex; align-items: center; }
         .receipt-img { width: 30px; height: 30px; border-radius: 4px; object-fit: cover; margin-right: 8px; border: 1px solid #ddd; }
@@ -68,7 +68,7 @@
 <div class="main-layout">
     
     <div class="card config-box">
-        <h2>🛠️ 菜品配置(自动配图)</h2>
+        <h2>🛠️ 橙香美食库</h2>
         <div class="config-form">
             <input type="text" id="new-name" class="input-name" placeholder="如: 汉堡/Noodle/Pizza">
             <input type="number" id="new-price" class="input-price" placeholder="价格" min="0">
@@ -78,12 +78,12 @@
     </div>
 
     <div class="card menu-box">
-        <h2>🍽️ 智能视觉点餐区</h2>
+        <h2>🍽️ 橙香点餐区</h2>
         <div class="menu-grid" id="menu-list"></div>
     </div>
 
     <div class="card receipt-box">
-        <h2>📄 带图出餐收据预览</h2>
+        <h2>📄 橙香的order</h2>
         <div id="receipt-content">
             <div class="receipt-title">*** 智绘未来智慧餐厅 ***</div>
             <div id="receipt-items">
@@ -101,7 +101,7 @@
 </div>
 
 <script>
-    // 默认自带智能配图的菜单数据 (使用免版权高质餐饮图片源)
+    // 默认自带智能配图的菜单数据
     const defaultMenu = [
         { id: 1, name: "牛肉面 Noodle", price: 28, img: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=200&auto=format&fit=crop" },
         { id: 2, name: "美式汉堡 Burger", price: 22, img: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=200&auto=format&fit=crop" },
@@ -117,9 +117,8 @@
         renderReceipt();
     }
 
-    // ✨ 核心逻辑：利用全球图库映射技术，根据输入的中文/英文菜名，自动匹配最相关的真实食物图片
+    // 根据输入的菜名自动匹配真实食物图片
     function getAutoImageUtl(foodName) {
-        // 提取核心关键词，优先转为英文能获得极高匹配度
         let keyword = foodName;
         if(foodName.includes("面")) keyword = "noodles";
         else if(foodName.includes("饭")) keyword = "rice";
@@ -130,11 +129,10 @@
         else if(foodName.includes("蛋糕") || foodName.includes("甜")) keyword = "cake";
         else if(foodName.includes("沙拉")) keyword = "salad";
         
-        // 动态生成一张 300x300 专门针对该食物种类的优质开源图像
         return `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&auto=format&fit=crop&q=60&sig=${Math.random()}&txt=${encodeURIComponent(keyword)}`;
     }
 
-    // 1. 添加新菜品（自动触发配图）
+    // 1. 添加新菜品
     function addCustomItem() {
         const nameInput = document.getElementById('new-name');
         const priceInput = document.getElementById('new-price');
@@ -146,7 +144,6 @@
             return;
         }
 
-        // 自动根据菜名配图
         const autoImg = getAutoImageUtl(name);
 
         const newItem = {
@@ -194,7 +191,7 @@
             </div>
         `).join('');
 
-        // 渲染中间点餐区（现代卡片式）
+        // 渲染中间点餐区
         menuList.innerHTML = menuData.map(item => `
             <div class="menu-card">
                 <img class="food-img" src="${item.img}" alt="${item.name}">
@@ -238,7 +235,6 @@
             if(item) {
                 const subtotal = item.price * cart[id];
                 total += subtotal;
-                // ✨ 这里将图片也嵌入到了收据格式中
                 itemsHtml += `
                     <div class="receipt-item-line">
                         <div class="receipt-food-detail">
@@ -274,7 +270,6 @@
         btn.innerText = "图像引擎正在绘制小票...";
         btn.disabled = true;
 
-        // 特别注意：因为图片来自外部网络，需要开启 allowTaint 和 useCORS，否则截图会变成空白
         html2canvas(receiptContent, {
             scale: 2,
             backgroundColor: "#fffdf7",
