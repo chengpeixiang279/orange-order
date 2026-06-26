@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Orange Order - 移动点餐端</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
         * { box-sizing: border-box; font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; }
         body { background-color: #f4f6f9; margin: 0; padding: 15px; color: #333; }
@@ -35,6 +36,7 @@
         .receipt-time { text-align: center; color: #999; font-size: 0.8em; margin-top: 10px; border-top: 1px solid #eee; padding-top: 8px; }
         .btn-submit { width: 100%; background: #2ecc71; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .empty-hint { color: #999; text-align: center; font-size: 0.9em; grid-column: 1/-1; }
+        .net-status { font-size: 0.8em; color: #7f8c8d; text-align: center; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -62,12 +64,26 @@
             <div class="receipt-time" id="receipt-time">打印时间：--</div>
         </div>
         <button class="btn-submit" id="generate-btn" onclick="sendAndDownloadOrder()">发送订单到厨房并下载</button>
+        <div class="net-status" id="net-text">📡 正在连接云通信通道...</div>
     </div>
 </div>
 
 <script>
-    // 固定的多设备配对密匙（确保点餐端和接单端这个字符串完全一致）
-    const ROOM_ID = "orange_shop_exclusive_2026"; 
+    // 独一无二的通信频道标识（点餐端与接单端必须完全一致）
+    const TOPIC_ID = "orange_shop_topic_2026_xyz"; 
+
+    // 初始化连接免费稳定的公共 MQTT 服务器 (EMQX 提供)
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+    client.on('connect', () => {
+        document.getElementById('net-text').innerText = "🟢 无线通信就绪，可正常跨设备送单";
+        document.getElementById('net-text').style.color = "#2ecc71";
+    });
+
+    client.on('error', () => {
+        document.getElementById('net-text').innerText = "🔴 通道连接失败，请检查网络";
+        document.getElementById('net-text').style.color = "#e74c3c";
+    });
 
     const defaultMenu = [
         { id: 1, name: "牛肉面 Noodle", img: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=200&auto=format&fit=crop" },
@@ -75,11 +91,11 @@
         { id: 3, name: "意式披萨 Pizza", img: "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=200&auto=format&fit=crop" }
     ];
 
-    let menuData = JSON.parse(localStorage.getItem('my_ai_menu_v2')) || defaultMenu;
+    let menuData = JSON.parse(localStorage.getItem('my_ai_menu_v3')) || defaultMenu;
     let cart = {};
 
     function saveAndRefresh() {
-        localStorage.setItem('my_ai_menu_v2', JSON.stringify(menuData));
+        localStorage.setItem('my_ai_menu_v3', JSON.stringify(menuData));
         renderConfigAndMenu();
         renderReceipt();
     }
@@ -89,7 +105,6 @@
         if(foodName.includes("面")) keyword = "noodles";
         else if(foodName.includes("饭")) keyword = "rice";
         else if(foodName.includes("肉")) keyword = "meat";
-        else if(foodName.includes("饮") || foodName.includes("汁")) keyword = "drink";
         return `https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=300&auto=format&fit=crop&q=60&sig=${Math.random()}`;
     }
 
@@ -165,7 +180,7 @@
         timeEl.innerText = itemsHtml ? `打印时间：${new Date().toLocaleTimeString()}` : '打印时间：--';
     }
 
-    // ✨核心：跨设备向云端发送订单数据
+    // ✨ 强力发射端：秒级将订单通过 MQTT 广播出去
     function sendAndDownloadOrder() {
         if (Object.keys(cart).length === 0) return alert('请先点餐！');
 
@@ -185,34 +200,33 @@
         btn.innerText = "正在跨设备无线送单...";
         btn.disabled = true;
 
-        // 📡 利用免费公用中转 API 跨设备投递（无需自建后端）
-        fetch(`https://api.paster.io/packet/${ROOM_ID}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-        .then(() => {
-            // 云端发送成功后，再执行本地的小票截图下载
-            return html2canvas(document.getElementById('receipt-content'), { scale: 2, backgroundColor: "#fffdf7", useCORS: true });
-        })
-        .then(canvas => {
-            const link = document.createElement('a');
-            link.href = canvas.toDataURL("image/png");
-            link.download = `点餐存根_${Date.now()}.png`;
-            link.click();
+        // 通过高内聚的 WebSocket 管道向外发布信息
+        try {
+            client.publish(TOPIC_ID, JSON.stringify(payload), { qos: 1 }, (err) => {
+                if (err) throw err;
 
-            cart = {};
-            saveAndRefresh();
-            alert('🚀 订单已无线发送到后厨接收设备！');
-        })
-        .catch(err => {
-            console.error(err);
-            alert("因网络原因，无线送单失败。");
-        })
-        .finally(() => {
+                // 传输完毕后截图生成小票
+                html2canvas(document.getElementById('receipt-content'), { scale: 2, backgroundColor: "#fffdf7", useCORS: true })
+                .then(canvas => {
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL("image/png");
+                    link.download = `点餐存根_${Date.now()}.png`;
+                    link.click();
+
+                    cart = {};
+                    saveAndRefresh();
+                    alert('🎉 订单已通过高稳定性通道发送到厨房终端！');
+                })
+                .finally(() => {
+                    btn.innerText = "发送订单到厨房并下载";
+                    btn.disabled = false;
+                });
+            });
+        } catch(e) {
+            alert("送单通道受阻，请确保设备能够正常访问外网。");
             btn.innerText = "发送订单到厨房并下载";
             btn.disabled = false;
-        });
+        }
     }
 
     renderConfigAndMenu();
